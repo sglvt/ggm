@@ -1,14 +1,32 @@
 package main
 
 import (
-	"fmt"
-	"log"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
+
+	//"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	//"github.com/prometheus/client_golang/prometheus"
+	log "github.com/sirupsen/logrus"
 )
 
+func getLogLevel() log.Level {
+	level, err := log.ParseLevel(strings.ToLower(os.Getenv("LOG_LEVEL")))
+	if err != nil {
+		level = log.InfoLevel
+	}
+	return level
+}
+
+func initLogger() {
+	log.SetLevel(getLogLevel())
+}
+
 func main() {
+	initLogger()
 	ret := nvml.Init()
 	if ret != nvml.SUCCESS {
 		log.Fatalf("Unable to initialize NVML: %v", nvml.ErrorString(ret))
@@ -36,55 +54,48 @@ func main() {
 			log.Fatalf("Unable to get uuid of device at index %d: %v", deviceIndex, nvml.ErrorString(ret))
 		}
 
-		fmt.Printf("%v,%v\n", uuid, deviceIndex)
-		memory, ret := nvml.DeviceGetMemoryInfo(device)
-		fmt.Printf("%v\n%v\n%v\n", memory.Total, memory.Free, memory.Used)
+		log.Debugf("%v,%v\n", uuid, deviceIndex)
 
 		t := time.Now().UnixMicro() - 5000000
-		fmt.Printf("Timestamp is %v\n", uint64(t))
+		log.Debugf("Timestamp: %v\n", uint64(t))
 
-		var deviceTotalGPUUtilization uint32 = 0
+		memory, ret := nvml.DeviceGetMemoryInfo(device)
+		log.Debugf("[%v] MemoryInfo: total=%v free=%v used=%v\n", deviceIndex, memory.Total, memory.Free, memory.Used)
+
 		processes, ret := nvml.DeviceGetProcessUtilization(device, uint64(t))
 		for k := range processes {
 			p := processes[k]
 			if p.Pid > 0 {
-				fmt.Printf("%v %v %v %v\n", p.Pid, p.TimeStamp, p.MemUtil, p.SmUtil)
-				deviceTotalGPUUtilization += p.SmUtil
+				log.Debugf("[%v] Process: pid=%v ts=%v memutil=%v smutil=%v\n", deviceIndex, p.Pid, p.TimeStamp, p.MemUtil, p.SmUtil)
 			}
 		}
 
-		fmt.Printf("%v - Total GPU Utilization: %v\n", deviceIndex, deviceTotalGPUUtilization)
-
-		// processName, ret := nvml.SystemGetProcessName(1)
-		// if ret != nvml.SUCCESS {
-		// 	fmt.Printf("SystemGetProcessName: %v", ret)
-		// } else {
-		// 	fmt.Printf("SystemGetProcessName: %v", ret)
-		// 	fmt.Printf("  name: %v", processName)
-		// }
-
 		temperature, ret := nvml.DeviceGetTemperature(device, nvml.TEMPERATURE_GPU)
-		fmt.Printf("%v\n", temperature)
-
+		if ret == nvml.SUCCESS {
+			log.Debugf("[%v] Temperature: %v\n", deviceIndex, temperature)
+		} else if ret == nvml.ERROR_NOT_SUPPORTED {
+			log.Debug("DeviceGetTemperature - Not supported")
+		}
 		utilization, ret := nvml.DeviceGetUtilizationRates(device)
 		if ret == nvml.SUCCESS {
-			fmt.Printf("%v\n", utilization)
+			log.Debugf("[%v] GPU Utilization: %v\n", deviceIndex, utilization.Gpu)
+			log.Debugf("[%v] Memory Utilization: %v\n", deviceIndex, utilization.Memory)
 		} else if ret == nvml.ERROR_NOT_SUPPORTED {
-			fmt.Println("DeviceGetTemperature - Not supported")
+			log.Debug("DeviceGetUtilizationRates - Not supported")
 		}
 
 		fanSpeed, ret := nvml.DeviceGetFanSpeed(device)
 		if ret == nvml.SUCCESS {
-			fmt.Printf("Fan Speed: %v\n", fanSpeed)
+			log.Debugf("[%v] Fan Speed: %v\n", deviceIndex, fanSpeed)
 		} else if ret == nvml.ERROR_NOT_SUPPORTED {
-			fmt.Println("DeviceGetFanSpeed - Not supported")
+			log.Debug("DeviceGetFanSpeed - Not supported")
 		}
 
 		_, vgpuUtilization, ret := nvml.DeviceGetVgpuUtilization(device, uint64(t))
 		if ret == nvml.SUCCESS {
-			fmt.Printf("Vgpu Utilization: %v\n", vgpuUtilization)
+			log.Debugf("[%v] Vgpu Utilization: %v\n", deviceIndex, vgpuUtilization)
 		} else if ret == nvml.ERROR_NOT_SUPPORTED {
-			fmt.Println("DeviceGetVgpuUtilization - Not supported")
+			log.Debug("DeviceGetVgpuUtilization - Not supported")
 		}
 	}
 
