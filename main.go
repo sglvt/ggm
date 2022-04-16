@@ -78,6 +78,8 @@ func main() {
 		}
 		utilization, ret := nvml.DeviceGetUtilizationRates(device)
 		if ret == nvml.SUCCESS {
+			// GPU utilization is the percentage of time when SMs was busy
+			// Memory utilization is actually the percentage of time the memory controller was busy (percentage of bandwidth used)
 			log.Debugf("[%v] GPU Utilization: %v\n", deviceIndex, utilization.Gpu)
 			log.Debugf("[%v] Memory Utilization: %v\n", deviceIndex, utilization.Memory)
 		} else if ret == nvml.ERROR_NOT_SUPPORTED {
