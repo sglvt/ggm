@@ -19,33 +19,83 @@ var utilizationGPU uint32
 
 var lastScrapeTimestamp int64 = 0
 
-type gpuCollector struct {
-	// UtilizationMemoryMetric *prometheus.Desc
-	utilizationGPUMetric *prometheus.Desc
+type gpuMetrics struct {
+	fanSpeed          uint32
+	memoryFree        uint64
+	memoryUsed        uint64
+	memoryTotal       uint64
+	utilizationGPU    uint32
+	utilizationMemory uint32
+	temperature       uint32
 }
+
+type gpuCollector struct {
+	fanSpeed          *prometheus.Desc
+	memoryFree        *prometheus.Desc
+	memoryUsed        *prometheus.Desc
+	memoryTotal       *prometheus.Desc
+	utilizationGPU    *prometheus.Desc
+	utilizationMemory *prometheus.Desc
+	temperature       *prometheus.Desc
+}
+
+var gpuMetricsList = []gpuMetrics{}
 
 func newGpuCollector() *gpuCollector {
 	return &gpuCollector{
-		utilizationGPUMetric: prometheus.NewDesc("gpu_utilization",
+		fanSpeed: prometheus.NewDesc("fan_speed",
+			"FanSpeed",
+			nil, nil,
+		),
+		memoryFree: prometheus.NewDesc("memory_free",
+			"Memory Free",
+			nil, nil,
+		),
+		memoryTotal: prometheus.NewDesc("memory_total",
+			"Memory Total",
+			nil, nil,
+		),
+		memoryUsed: prometheus.NewDesc("memory_used",
+			"Memory Used",
+			nil, nil,
+		),
+		utilizationGPU: prometheus.NewDesc("utilization_gpu",
 			"GPU Utilization",
+			nil, nil,
+		),
+		utilizationMemory: prometheus.NewDesc("utilization_memory",
+			"Memory Utilization",
+			nil, nil,
+		),
+		temperature: prometheus.NewDesc("temperature",
+			"Temperature",
 			nil, nil,
 		),
 	}
 }
 
-func (c *gpuCollector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- c.utilizationGPUMetric
+func (g *gpuCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- g.utilizationGPU
 }
 
-func (c *gpuCollector) Collect(ch chan<- prometheus.Metric) {
-
-	//Write latest value for each metric in the prometheus metric channel.
-	//Note that you can pass CounterValue, GaugeValue, or UntypedValue types here.
+func (g *gpuCollector) Collect(ch chan<- prometheus.Metric) {
 	log.Debug("Collect()")
 	readMetrics()
 
-	m1 := prometheus.MustNewConstMetric(c.utilizationGPUMetric, prometheus.GaugeValue, float64(utilizationGPU))
-	ch <- m1
+	fanSpeed := prometheus.MustNewConstMetric(g.fanSpeed, prometheus.GaugeValue, float64(gpuMetricsList[0].fanSpeed))
+	memoryFree := prometheus.MustNewConstMetric(g.memoryFree, prometheus.GaugeValue, float64(gpuMetricsList[0].memoryFree))
+	memoryTotal := prometheus.MustNewConstMetric(g.memoryTotal, prometheus.GaugeValue, float64(gpuMetricsList[0].memoryTotal))
+	memoryUsed := prometheus.MustNewConstMetric(g.memoryUsed, prometheus.GaugeValue, float64(gpuMetricsList[0].memoryUsed))
+	utilizationGPU := prometheus.MustNewConstMetric(g.utilizationGPU, prometheus.GaugeValue, float64(gpuMetricsList[0].utilizationGPU))
+	utilizationMemory := prometheus.MustNewConstMetric(g.utilizationMemory, prometheus.GaugeValue, float64(gpuMetricsList[0].utilizationMemory))
+	temperature := prometheus.MustNewConstMetric(g.temperature, prometheus.GaugeValue, float64(gpuMetricsList[0].temperature))
+	ch <- fanSpeed
+	ch <- memoryFree
+	ch <- memoryTotal
+	ch <- memoryUsed
+	ch <- utilizationGPU
+	ch <- utilizationMemory
+	ch <- temperature
 }
 
 func getLogLevel() log.Level {
@@ -63,6 +113,7 @@ func initLogger() {
 func readMetrics() {
 	if time.Now().Unix()-lastScrapeTimestamp > MIN_SCRAPE_INTERVAL {
 		lastScrapeTimestamp = time.Now().Unix()
+		gpuMetricsList = gpuMetricsList[:0]
 		log.Debugf("Got metrics at %v\n", lastScrapeTimestamp)
 		ret := nvml.Init()
 		if ret != nvml.SUCCESS {
@@ -79,7 +130,9 @@ func readMetrics() {
 			log.Fatalf("Unable to get device count: %v", nvml.ErrorString(ret))
 		}
 
+		// Loop through devices
 		for deviceIndex := 0; deviceIndex < count; deviceIndex++ {
+			var deviceGpuMetrics gpuMetrics
 			device, ret := nvml.DeviceGetHandleByIndex(deviceIndex)
 			if ret != nvml.SUCCESS {
 				log.Fatalf("Unable to get device at index %d: %v", deviceIndex, nvml.ErrorString(ret))
@@ -98,6 +151,10 @@ func readMetrics() {
 			memory, ret := nvml.DeviceGetMemoryInfo(device)
 			log.Debugf("[%v] MemoryInfo: total=%v free=%v used=%v\n", deviceIndex, memory.Total, memory.Free, memory.Used)
 
+			deviceGpuMetrics.memoryFree = memory.Free
+			deviceGpuMetrics.memoryTotal = memory.Total
+			deviceGpuMetrics.memoryUsed = memory.Used
+
 			processes, ret := nvml.DeviceGetProcessUtilization(device, uint64(t))
 			for k := range processes {
 				p := processes[k]
@@ -112,16 +169,19 @@ func readMetrics() {
 			} else if ret == nvml.ERROR_NOT_SUPPORTED {
 				log.Debug("DeviceGetTemperature - Not supported")
 			}
+			deviceGpuMetrics.temperature = temperature
+
 			utilization, ret := nvml.DeviceGetUtilizationRates(device)
 			if ret == nvml.SUCCESS {
 				// GPU utilization is the percentage of time when SM(streaming multiprocessor) was busy
 				// Memory utilization is actually the percentage of time the memory controller was busy (percentage of bandwidth used)
 				log.Debugf("[%v] GPU Utilization: %v\n", deviceIndex, utilization.Gpu)
 				log.Debugf("[%v] Memory Utilization: %v\n", deviceIndex, utilization.Memory)
-				utilizationGPU = utilization.Gpu
 			} else if ret == nvml.ERROR_NOT_SUPPORTED {
 				log.Debug("DeviceGetUtilizationRates - Not supported")
 			}
+			deviceGpuMetrics.utilizationGPU = utilization.Gpu
+			deviceGpuMetrics.utilizationMemory = utilization.Memory
 
 			fanSpeed, ret := nvml.DeviceGetFanSpeed(device)
 			if ret == nvml.SUCCESS {
@@ -129,13 +189,9 @@ func readMetrics() {
 			} else if ret == nvml.ERROR_NOT_SUPPORTED {
 				log.Debug("DeviceGetFanSpeed - Not supported")
 			}
+			deviceGpuMetrics.fanSpeed = fanSpeed
 
-			_, vgpuUtilization, ret := nvml.DeviceGetVgpuUtilization(device, uint64(t))
-			if ret == nvml.SUCCESS {
-				log.Debugf("[%v] Vgpu Utilization: %v\n", deviceIndex, vgpuUtilization)
-			} else if ret == nvml.ERROR_NOT_SUPPORTED {
-				log.Debug("DeviceGetVgpuUtilization - Not supported")
-			}
+			gpuMetricsList = append(gpuMetricsList, deviceGpuMetrics)
 		}
 
 	}
