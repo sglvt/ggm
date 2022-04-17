@@ -15,8 +15,6 @@ import (
 
 const MIN_SCRAPE_INTERVAL = 5
 
-var utilizationGPU uint32
-
 var lastScrapeTimestamp int64 = 0
 
 type gpuMetrics struct {
@@ -60,11 +58,11 @@ func newGpuCollector() *gpuCollector {
 			nil, nil,
 		),
 		utilizationGPU: prometheus.NewDesc("utilization_gpu",
-			"GPU Utilization",
+			"GPU utilization is the percentage of time when SM(streaming multiprocessor) was busy",
 			nil, nil,
 		),
 		utilizationMemory: prometheus.NewDesc("utilization_memory",
-			"Memory Utilization",
+			"Memory utilization is actually the percentage of time the memory controller was busy (percentage of bandwidth used)",
 			nil, nil,
 		),
 		temperature: prometheus.NewDesc("temperature",
@@ -164,8 +162,6 @@ func readMetrics() {
 
 			utilization, ret := nvml.DeviceGetUtilizationRates(device)
 			if ret == nvml.SUCCESS {
-				// GPU utilization is the percentage of time when SM(streaming multiprocessor) was busy
-				// Memory utilization is actually the percentage of time the memory controller was busy (percentage of bandwidth used)
 				log.Debugf("[%v] GPU Utilization: %v\n", deviceIndex, utilization.Gpu)
 				log.Debugf("[%v] Memory Utilization: %v\n", deviceIndex, utilization.Memory)
 			} else if ret == nvml.ERROR_NOT_SUPPORTED {
@@ -181,6 +177,20 @@ func readMetrics() {
 				log.Debug("DeviceGetFanSpeed - Not supported")
 			}
 			deviceGpuMetrics.fanSpeed = fanSpeed
+
+			// powerUsage, ret := nvml.DeviceGetPowerUsage(device)
+			// if ret == nvml.SUCCESS {
+			// 	log.Debugf("[%v] Power Usage: %v\n", deviceIndex, powerUsage)
+			// } else if ret == nvml.ERROR_NOT_SUPPORTED {
+			// 	log.Debug("DeviceGetPowerUsage - Not supported")
+			// }
+
+			// _, driverModel, ret := nvml.DeviceGetDriverModel(device)
+			// if ret == nvml.SUCCESS {
+			// 	log.Debugf("[%v] Power Usage: %v\n", deviceIndex, driverModel)
+			// } else if ret == nvml.ERROR_NOT_SUPPORTED {
+			// 	log.Debug("DeviceGetDriverModel - Not supported")
+			// }
 
 			gpuMetricsList = append(gpuMetricsList, deviceGpuMetrics)
 		}
