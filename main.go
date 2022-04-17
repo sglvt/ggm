@@ -115,16 +115,7 @@ func readMetrics() {
 		lastScrapeTimestamp = time.Now().Unix()
 		gpuMetricsList = gpuMetricsList[:0]
 		log.Debugf("Got metrics at %v\n", lastScrapeTimestamp)
-		ret := nvml.Init()
-		if ret != nvml.SUCCESS {
-			log.Fatalf("Unable to initialize NVML: %v", nvml.ErrorString(ret))
-		}
-		defer func() {
-			ret := nvml.Shutdown()
-			if ret != nvml.SUCCESS {
-				log.Fatalf("Unable to shutdown NVML: %v", nvml.ErrorString(ret))
-			}
-		}()
+
 		count, ret := nvml.DeviceGetCount()
 		if ret != nvml.SUCCESS {
 			log.Fatalf("Unable to get device count: %v", nvml.ErrorString(ret))
@@ -199,6 +190,16 @@ func readMetrics() {
 
 func main() {
 	initLogger()
+	ret := nvml.Init()
+	if ret != nvml.SUCCESS {
+		log.Fatalf("Unable to initialize NVML: %v", nvml.ErrorString(ret))
+	}
+	defer func() {
+		ret := nvml.Shutdown()
+		if ret != nvml.SUCCESS {
+			log.Fatalf("Unable to shutdown NVML: %v", nvml.ErrorString(ret))
+		}
+	}()
 	gpuCollector := newGpuCollector()
 	prometheus.MustRegister(gpuCollector)
 
