@@ -62,7 +62,7 @@ func initLogger() {
 
 func readMetrics() {
 	if time.Now().Unix()-lastScrapeTimestamp > MIN_SCRAPE_INTERVAL {
-		lastScrapeTimestamp := time.Now().Unix()
+		lastScrapeTimestamp = time.Now().Unix()
 		log.Debugf("Got metrics at %v\n", lastScrapeTimestamp)
 		ret := nvml.Init()
 		if ret != nvml.SUCCESS {
