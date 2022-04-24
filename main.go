@@ -178,20 +178,6 @@ func readMetrics() {
 			}
 			deviceGpuMetrics.fanSpeed = fanSpeed
 
-			// powerUsage, ret := nvml.DeviceGetPowerUsage(device)
-			// if ret == nvml.SUCCESS {
-			// 	log.Debugf("[%v] Power Usage: %v\n", deviceIndex, powerUsage)
-			// } else if ret == nvml.ERROR_NOT_SUPPORTED {
-			// 	log.Debug("DeviceGetPowerUsage - Not supported")
-			// }
-
-			// _, driverModel, ret := nvml.DeviceGetDriverModel(device)
-			// if ret == nvml.SUCCESS {
-			// 	log.Debugf("[%v] Power Usage: %v\n", deviceIndex, driverModel)
-			// } else if ret == nvml.ERROR_NOT_SUPPORTED {
-			// 	log.Debug("DeviceGetDriverModel - Not supported")
-			// }
-
 			gpuMetricsList = append(gpuMetricsList, deviceGpuMetrics)
 		}
 
